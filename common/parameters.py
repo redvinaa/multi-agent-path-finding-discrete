@@ -1,118 +1,64 @@
 Params = {
 
-	'1agent-st1': {
+	'1agent': {
 		# environment
-		'N_AGENTS': 1,
-		'MAP_IMAGE': 'maps/test_4x4.jpg',
+		'AGENTS': ['qlearning'],
+		'MAP_IMAGE': 'maps/test_3x3.jpg',
 
 		# learning
 		'EPSILON_START': 1.,
 		'EPSILON_FINAL': .0,
-		'EPSILON_DECAY_LENGTH': 5e4,
-		'GAMMA': .9,
+		'EPSILON_DECAY_LENGTH': 1e5,
+		'GAMMA': .999,
 
 		# ANN
-		'HIDDEN_LAYER_SIZE': 5,
+		'HIDDEN_LAYER_SIZE': 20,
 		'N_HIDDEN_LAYERS': 1,
 
 		# other
-		'STEPS': int(5e4),
-		'STAGE': 1,
-		'MODEL_SAVE_FREQ': 0,
+		'STEPS': int(2e5),
 		'LOAD_MODEL': '',
 		'COMMENT': ''
 	},
 
-	'1agent-st2': {
+	'1agent-render': {
 		# environment
-		'N_AGENTS': 1,
-		'MAP_IMAGE': 'maps/test_4x4.jpg',
+		'AGENTS': ['qlearning'],
+		'MAP_IMAGE': 'maps/test_3x3.jpg',
 
 		# learning
-		'EPSILON_START': 1.,
+		'EPSILON_START': .0,
 		'EPSILON_FINAL': .0,
-		'EPSILON_DECAY_LENGTH': 5e4,
-		'GAMMA': .9,
+		'EPSILON_DECAY_LENGTH': 1e5,
+		'GAMMA': .999,
 
 		# ANN
-		'HIDDEN_LAYER_SIZE': 5,
+		'HIDDEN_LAYER_SIZE': 20,
 		'N_HIDDEN_LAYERS': 1,
 
 		# other
-		'STEPS': int(5e4),
-		'STAGE': 2,
-		'MODEL_SAVE_FREQ': 0,
-		'LOAD_MODEL': '',
+		'STEPS': int(2e5),
+		'LOAD_MODEL': '1agent',
 		'COMMENT': ''
 	},
 
 	'2agent': {
 		# environment
-		'N_AGENTS': 2,
-		'MAP_IMAGE': 'maps/test_4x4.jpg',
+		'AGENTS': ['qlearning', 'qlearning'],
+		'MAP_IMAGE': 'maps/test_3x3.jpg',
 
 		# learning
 		'EPSILON_START': 1.,
-		'EPSILON_FINAL': .1,
-		'EPSILON_DECAY_LENGTH': 1e5,
+		'EPSILON_FINAL': .0,
+		'EPSILON_DECAY_LENGTH': 4e5,
 		'GAMMA': .9,
 
 		# ANN
-		'HIDDEN_LAYER_SIZE': 10,
+		'HIDDEN_LAYER_SIZE': 40,
 		'N_HIDDEN_LAYERS': 1,
 
 		# other
-		'STEPS': int(2e5),
-		'STAGE': 2,
-		'MODEL_SAVE_FREQ': 0,
-		'LOAD_MODEL': '',
-		'COMMENT': ''
-	},
-
-	'2agent-1': {
-		# environment
-		'N_AGENTS': 2,
-		'MAP_IMAGE': 'maps/test_4x4.jpg',
-
-		# learning
-		'EPSILON_START': 1.,
-		'EPSILON_FINAL': .1,
-		'EPSILON_DECAY_LENGTH': 1e5,
-		'GAMMA': .9,
-
-		# ANN
-		'HIDDEN_LAYER_SIZE': 10,
-		'N_HIDDEN_LAYERS': 1,
-
-		# other
-		'STEPS': int(2e5),
-		'STAGE': 2,
-		'MODEL_SAVE_FREQ': 0,
-		'LOAD_MODEL': '',
-		'COMMENT': ''
-	},
-
-	'2agent-2': {
-		# environment
-		'N_AGENTS': 2,
-		'MAP_IMAGE': 'maps/test_4x4.jpg',
-
-		# learning
-		'EPSILON_START': 1.,
-		'EPSILON_FINAL': .1,
-		'EPSILON_DECAY_LENGTH': 1e5,
-		'GAMMA': .9,
-		'LR': 1e-3,
-		'MOMENTUM': 0.1,
-
-		# ANN
-		'HIDDEN_LAYER_SIZE': 10,
-		'N_HIDDEN_LAYERS': 1,
-
-		# other
-		'STEPS': int(1e5),
-		'STAGE': 2,
-		'MODEL_SAVE_FREQ': 0,
+		'STEPS': int(6e5),
 		'LOAD_MODEL': '',
 		'COMMENT': ''
 	},

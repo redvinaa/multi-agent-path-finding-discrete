@@ -1,0 +1,24 @@
+{
+	"configurations": {
+		"run": {
+			"adapter": "debugpy",
+			"default": true,
+			"configuration": {
+				"python": "${workspaceRoot}/.venv/bin/python",
+				"request": "launch",
+				"program": "${workspaceRoot}/discrete_learning.py",
+				"cwd": "${workspaceRoot}",
+				"stopOnEntry": true,
+				"args": ["--delete_previous", "1agent-2"],
+				"console": "externalTerminal"
+			},
+			"breakpoints": {
+				"exception": {
+					"raised": "N",
+					"uncaught": "",
+					"userUnhandled": ""
+				}
+			}
+		}
+	}
+}

@@ -1,15 +1,16 @@
 import numpy as np
 import cv2
 
-a = np.array([
-[0, 0, 0, 0],
-[1, 1, 1, 1],
-[0, 0, 1, 0],
-[0, 0, 1, 0],
-], float)
-img_name = 'maps/T.jpg'
+# 1 is free, 0 is wall
 
-cv2.imshow(img_name, a)
+a = np.array([
+[1, 1, 1],
+[1, 0, 1],
+[1, 1, 1],
+], float)
+img_name = 'maps/test_3x3.jpg'
+
+cv2.imshow('New map: ' + img_name, cv2.resize(a, (700, 700), interpolation=cv2.INTER_AREA))
 cv2.waitKey()
 
 a = np.array(a, dtype=np.uint8)*255

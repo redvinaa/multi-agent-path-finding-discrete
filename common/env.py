@@ -48,50 +48,25 @@ class DiscreteEnv(gym.Env):
 		self.map = cv2.threshold(self.map, .5, 1, cv2.THRESH_BINARY)[1]
 		self.map = self.map.astype(np.float32)
 
-		self.map_size = min(self.map.shape)
-		self.map = self.map[:self.map_size, :self.map_size]
-		self.map_padded = pad_image(self.map)
+		assert(len(self.map.shape) == 2 and self.map.shape[0] == self.map.shape[1])
+		self.map_size = self.map.shape[0]
 
 		## constants
 		self.RENDER_SIZE          = 700 # size of rendered image (square)
-		self.GOAL_REACHING_REWARD = 1
 		self.curr_agent           = 0
 		self.sf                   = self.RENDER_SIZE / self.map_size # scale factor, used at rendering
-		self.ACTION_DELTAS        = np.array([[0, 0], [0, 1], [-1, 0], [0, -1], [1, 0]]) # movement for each act
-
-		self.planner              = GlobalPlanner()
-		self.planner.set_map(self.map)
+		self.ACTION_DELTAS        = np.array([[0, 1], [-1, 0], [0, -1], [1, 0], [0, 0]]) # movement for each act
 
 		## generating colors for agents
-		self.agent_colors = np.random.random(size=3*N).reshape((-1, 3))
+		self.agent_colors = 1 - np.random.random(size=3*N).reshape((-1, 3))/2
 
 		## observation space
-		local_map     = spaces.Box(low=0, high=2, shape=(3, 3), dtype=int)
-		agent_coords  = spaces.Box(low=0, high=self.map_size-1, shape=(self.N-1, 2), dtype=int)
-		cost_mat      = spaces.Box(low=0, high=self.map_size-1, shape=(self.N, 3, 3), dtype=int)
-		self.observation_space = spaces.Tuple((local_map, agent_coords, cost_mat))
+		agent_coords  = spaces.Box(low=0, high=self.map_size-1, shape=(self.N, 2), dtype=int)
+		goal_coords   = spaces.Box(low=0, high=self.map_size-1, shape=(self.N, 2), dtype=int)
+		self.observation_space = spaces.Tuple((agent_coords, goal_coords))
 
 		## action space
 		self.action_space = spaces.Discrete(5)
-
-		## calculating costmap
-		self.cost_map             = np.empty((self.map_size,)*4, dtype=int) # this is global
-		self.cost_map_loc         = np.empty((self.N,3,3), dtype=int) # this is local
-		for i1 in range(self.map_size):
-			for i2 in range(self.map_size):
-				for i3 in range(self.map_size):
-					for i4 in range(self.map_size):
-						if self.map[i1, i2] == 0 or self.map[i3, i4] == 0:
-							self.cost_map[i1, i2, i3, i4] = -1
-						else:
-							pt_a = np.array([i1, i2])
-							pt_b = np.array([i3, i4])
-							path = self.planner.find_path(pt_a, pt_b)
-							l    = len(path)
-							self.cost_map[i1, i2, i3, i4] = l
-
-		self.cost_map_padded = np.full((self.map_size+2,)*4, -1)
-		self.cost_map_padded[1:-1, 1:-1, 1:-1, 1:-1] = self.cost_map.copy()
 
 		## generating starting states and goals
 		# create a copy of the map, and mark where a new state or goal can be spawned
@@ -121,34 +96,13 @@ class DiscreteEnv(gym.Env):
 	# }}}
 
 	def get_observation(self): # {{{
-		p_v1 = self.states[self.curr_agent, 0] # horizontal, from
-		p_v2 = p_v1 + 3                        # horizontal, to
-		p_h1 = self.states[self.curr_agent, 1] # vertical, from
-		p_h2 = p_h1 + 3                        # vertical, to
-		loc_map = self.map_padded[p_v1:p_v2, p_h1:p_h2].copy()*2
+		agent_coords = self.states # absolute position
+		agent_coords = np.roll(agent_coords, -self.curr_agent)
 
-		coords_of_agents = self.states - self.states[self.curr_agent] # relative position
-		coords_of_agents = np.delete(coords_of_agents, self.curr_agent, axis=0) # delete entry for current agent
+		goal_coords = self.goals # absolute position
+		goal_coords = np.roll(goal_coords, -self.curr_agent)
 
-		# mark agents' positions on loc_map
-		for i, a in enumerate(coords_of_agents):
-			if (np.abs(a) <= 1).all():
-				loc_map[a[0]+1, a[1]+1] = 1.
-
-		# marking goal for current agent on loc_map
-		g_rel = self.goals[self.curr_agent] - self.states[self.curr_agent]
-		if (np.abs(g_rel) <= 1).all():
-			loc_map[g_rel[0]+1, g_rel[1]+1] = 3.
-
-		# get costmaps
-		for n in range(self.N):
-			s = self.states[n]
-			g = self.goals[n]
-			self.cost_map_loc[n] = self.cost_map_padded[s[0]:s[0]+3, s[1]:s[1]+3, g[0]+1, g[1]+1]
-		indices = np.array(range(self.N))
-		indices = np.append(self.curr_agent, np.delete(indices, self.curr_agent))
-
-		return loc_map, coords_of_agents, self.cost_map_loc[indices]
+		return agent_coords, goal_coords
 	# }}}
 
 	def reset(self): # {{{
@@ -159,9 +113,9 @@ class DiscreteEnv(gym.Env):
 		R = 0
 		next_state = self.states[self.curr_agent] + self.ACTION_DELTAS[action]
 
-		info = {'reached_goal': False}
+		done = False
 		hit = False
-		if action != 0:
+		if action != 4:
 			# check for collision
 			if -1 in next_state or self.map_size in next_state:
 				# out of map
@@ -173,14 +127,13 @@ class DiscreteEnv(gym.Env):
 				# hit other agent
 				hit = True
 
-		if not hit and action != 0:
+		if not hit and action != 4:
 			# there is actual movement
 			self.states[self.curr_agent] = next_state
 
 			# check if goal is reached
 			if (self.states[self.curr_agent] == self.goals[self.curr_agent]).all():
-				R += self.GOAL_REACHING_REWARD
-				info = {'reached_goal': True}
+				done = True
 				# generate new goal
 				self.free_vec   = np.argwhere(self.map.astype(bool).flatten()).flatten()
 				for n in range(self.N): # mark states and goals as occupied
@@ -198,14 +151,14 @@ class DiscreteEnv(gym.Env):
 				row = int(g_new // self.map_size)
 				col = g_new - row * self.map_size
 				self.goals[self.curr_agent] = np.array([row, col])
-		if R == 0:
+		if not done:
 			# no goal reaching reward
 			R = -1
 
 		self.curr_agent = (self.curr_agent+1) % self.N
 		S = self.get_observation()
 
-		return S, float(R), info
+		return S, float(R), done, None
 	# }}}
 
 	def serialize(self, S, dtype=np.float32): # {{{
@@ -215,19 +168,17 @@ class DiscreteEnv(gym.Env):
 	# }}}
 
 	def deserialize(self, S, dtype=np.float32): # {{{
-		loc_map = S[:9].reshape((3,3))
-		S = S[9:]
-		coords_of_agents = S[:(self.N-1)*2].reshape((-1, 2))
-		S = S[(self.N-1)*2:]
-		cost_map_loc = S.reshape((-1, 3, 3))
-		return loc_map, coords_of_agents, cost_map_loc
+		agent_coords = S[:self.N*2].reshape((-1, 2))
+		S = S[self.N*2:]
+		goal_coords = S[:self.N*2].reshape((-1, 2))
+		S = S[self.N*2:]
+		return agent_coords, goal_coords
 	# }}}
 
 	def get_os_len(self): # {{{
 		return (
-			9 + # local_map
-			(self.N-1)*2 + # coords_of_agents
-			self.N*9 # cost_maps
+			self.N*2 + # agent_coords
+			self.N*2   # goal_coords
 			)
 	# }}}
 
@@ -281,19 +232,21 @@ class DiscreteEnv(gym.Env):
 if __name__ == '__main__': # {{{
 	np.random.seed(0)
 
-	N = 2
-	env = DiscreteEnv(N, 'maps/test.jpg')
-	S = env.reset()
-	env.render()
+	N = 1
 
-	for i in range(100*N):
-		print('========================')
-		print(f'S = {S}')
-		A = env.action_space.sample()
-		print(f'A = {A}')
-		S, R, info = env.step(A)
-		print(f'R = {R}')
-		print(f'S_ = {S}')
-		print(f'info = {info}')
-		env.render()
+	env = DiscreteEnv(N, 'maps/test_4x4.jpg')
+	S = env.reset()
+
+	while True:
+		for n in range(N):
+			A = env.action_space.sample()
+			S, R, done, _ = env.step(A)
+			if n == 0:
+				print('========================')
+				print(f'N = {n}')
+				print(f'S = {S}')
+				print(f'A = {A}')
+				print(f'R = {R}')
+				print(f'done = {done}')
+			env.render()
 # }}}
