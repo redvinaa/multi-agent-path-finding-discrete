@@ -77,13 +77,15 @@ def discrete_learning(args):
 					print(f'{args["ns"]} > Steps: {steps:.1e}')
 
 			agents.epsilon = eps()
-			writer.add_scalar('training/epsilon', eps(), steps)
+			writer.add_scalar('epsilon', eps(), steps)
 
 			S, R, done, _ = env.step(A)
 			S = env.serialize(S)
 			A, L = agents.step(S, R, done)
+
+			writer.add_scalar(f'action/agent_{env.curr_agent}', A, steps)
 			if type(L) != type(None):
-				writer.add_scalar(f'training/loss/agent_{env.curr_agent}', L, steps)
+				writer.add_scalar(f'loss/agent_{env.curr_agent}', L, steps)
 
 			# saving models
 			if steps % (params['STEPS']//10) == 0 and steps != 0:
@@ -94,7 +96,7 @@ def discrete_learning(args):
 			steps += 1
 
 			if done:
-				writer.add_scalar(f'training/number_of_steps/agent_{env.curr_agent}',
+				writer.add_scalar(f'number_of_steps/agent_{env.curr_agent}',
 					number_of_steps[env.curr_agent], steps)
 				number_of_steps[env.curr_agent] = 0
 			else:
