@@ -9,7 +9,7 @@ def test(args):
 	with open('parameters.yaml', 'r') as f:
 		Params = yaml.load(f, Loader=yaml.FullLoader)
 	params = Params[args['name']]
-	N = len(params['agents'])
+	N = sum(params['agents'].values())
 
 	# construct environment
 	env = DiscreteEnv(N, params['map_image'])
