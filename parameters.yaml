@@ -1,10 +1,22 @@
-1agent:
-  map_image: maps/test_3x3.jpg
-  agents:
-  - type: qlearning
+agent_definitions:
+  qlearning_1:
+    type: qlearning
     hidden_layer_size: 30
     n_hidden_layers: 1
     gamma: 0.9
+  dqn_1:
+    type: DQN
+    hidden_layer_size: 30
+    n_hidden_layers: 1
+    gamma: 0.9
+    device: cpu
+    sync_frequency: 1000
+    buffer_size: 1000
+    sample_size: 100
+1agent:
+  map_image: maps/test_3x3.jpg
+  agents:
+    qlearning_1: 1
   epsilon_decay_length: 200000 # 2e5
   epsilon_start: 1.0
   epsilon_final: 0.0
@@ -14,14 +26,7 @@
 1agent-dqn:
   map_image: maps/test_3x3.jpg
   agents:
-  - type: DQN
-    hidden_layer_size: 30
-    n_hidden_layers: 1
-    gamma: 0.9
-    device: cpu
-    sync_frequency: 1000
-    buffer_size: 1000
-    sample_size: 100
+    dqn_1: 1
   epsilon_decay_length: 20000 # 2e4
   epsilon_start: 1.0
   epsilon_final: 0.0
@@ -30,18 +35,11 @@
   comment: ''
 2agent:
   agents:
-  - type: qlearning
-    hidden_layer_size: 30
-    n_hidden_layers: 1
-    gamma: 0.9
-  - type: qlearning
-    hidden_layer_size: 30
-    n_hidden_layers: 1
-    gamma: 0.9
+    qlearning_1: 2
   comment: ''
   epsilon_decay_length: 400000 # 4e5
-  epsilon_final: 0.0
   epsilon_start: 1.0
+  epsilon_final: 0.0
   hidden_layer_size: 40
   load_model: ''
   map_image: maps/test_3x3.jpg
@@ -49,28 +47,25 @@
   steps: 600000 # 6e5
 2agent-dqn:
   agents:
-  - type: DQN
-    hidden_layer_size: 30
-    n_hidden_layers: 1
-    gamma: 0.9
-    device: cpu
-    sync_frequency: 1000
-    buffer_size: 1000
-    sample_size: 100
-  - type: DQN
-    hidden_layer_size: 30
-    n_hidden_layers: 1
-    gamma: 0.9
-    device: cpu
-    sync_frequency: 1000
-    buffer_size: 1000
-    sample_size: 100
+    dqn_1: 2
   comment: ''
   epsilon_decay_length: 20000 #2e4
-  epsilon_final: 0.0
   epsilon_start: 1.0
+  epsilon_final: 0.0
   hidden_layer_size: 40
   load_model: ''
   map_image: maps/test_3x3.jpg
+  n_hidden_layers: 1
+  steps: 100000 # 1e5
+4agent:
+  agents:
+    dqn_1: 4
+  comment: ''
+  epsilon_decay_length: 40000 #4e4
+  epsilon_start: 1.0
+  epsilon_final: 0.0
+  hidden_layer_size: 40
+  load_model: ''
+  map_image: maps/test_9x9.jpg
   n_hidden_layers: 1
   steps: 100000 # 1e5

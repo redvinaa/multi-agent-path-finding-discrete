@@ -29,16 +29,17 @@ def discrete_learning(args):
 		Params = yaml.load(f, Loader=yaml.FullLoader)
 	params = Params[args["name"]]
 
-	N_AGENTS = len(params['agents'])
+	N_AGENTS = sum(params['agents'].values())
 
 	# construct environment
 	env = DiscreteEnv(N_AGENTS, params['map_image'])
 
 	# load or construct Q_networks
 	agent_list = []
-	for i, agent_config in enumerate(params['agents']):
-		agent = make_agent(env, agent_config)
-		agent_list.append(agent)
+	for agent_type, num in params['agents'].items():
+		for i in range(num):
+			agent = make_agent(env, Params['agent_definitions'][agent_type])
+			agent_list.append(agent)
 	agents = MultiAgent(agent_list)
 
 	if params['load_model']:
