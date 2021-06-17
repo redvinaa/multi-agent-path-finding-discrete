@@ -1,24 +1,17 @@
 import numpy as np
 import torch
 import torch.nn as nn
+from common.buffer import Experience
 
 class QLearningAgent:
 	# this class includes the epsilon-greedy action-selector,
 	# and the q-learning algorithm (inputs: X, A, R, X_)
 
-	def __init__(self, net, optim, policy=None, gamma=1., num_actions=5):
+	def __init__(self, net, optim, gamma=1., num_actions=5):
 		self.net         = net
 		self.optim       = optim
-		self.policy      = policy
 		self.gamma       = gamma
 		self.num_actions = num_actions
-
-	def greedy_action(self, X):
-		state_a = np.array([X], copy=False)
-		state_v = torch.as_tensor(state_a)
-		q_vals_v = self.net(state_v)
-		_, act_v = torch.max(q_vals_v, dim=1)
-		return int(act_v.flatten().item())
 
 	def __call__(self, X, epsilon=0.):
 		# action selector
@@ -26,18 +19,16 @@ class QLearningAgent:
 		if np.random.random() < epsilon:
 			return np.random.randint(0, self.num_actions)
 
-		if self.policy == None:
-			return self.greedy_action(X)
-		return self.policy(X)
+		state_a = np.array([X], copy=False)
+		state_v = torch.as_tensor(state_a)
+		q_vals_v = self.net(state_v)
+		_, act_v = torch.max(q_vals_v, dim=1)
+		return int(act_v.flatten().item())
 
-	def step(self, data, epsilon=0.): # learning
+	def step(self, experience, epsilon=0.): # learning
 		self.optim.zero_grad()
 
-		X  = data['X']
-		A  = data['A']
-		R  = data['R']
-		X_ = data['X_']
-		reached_goal = data['reached_goal']
+		X, A, R, reached_goal, X_ = experience
 
 		# transform to pytorch vectors
 		Xv  = torch.tensor(X).unsqueeze(0)

@@ -8,13 +8,13 @@ if __name__ == '__main__':
 
 	if len(args.names) == 1:
 		params = Params[args.names[0]]
-		env = DiscreteEnv(len(params['AGENTS']), params['MAP_IMAGE'])
+		env = DiscreteEnv(len(params['agents']), params['map_image'])
 		os_len = env.get_os_len()
 		print(f'os_len = {os_len}')
 
 	else:
 		for name in args.names:
 			params = Params[name]
-			env = DiscreteEnv(len(params['AGENTS']), params['MAP_IMAGE'])
+			env = DiscreteEnv(len(params['agents']), params['map_image'])
 			os_len = env.get_os_len()
 			print(f'{name} > os_len = {os_len}')

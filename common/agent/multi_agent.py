@@ -1,9 +1,10 @@
 import numpy as np
 import torch
 import torch.nn as nn
+from common.buffer import Experience
 
 class MultiAgent: # {{{
-	# this class can be used with an infinite episode multiagent environment:
+	# this class can be used with an infinite episode multi-agent environment:
 	# it wraps the agents, collects (X, A, R, X_) sets, then trains them
 
 	def __init__(self, agent_list, epsilon=0):
@@ -70,15 +71,14 @@ class MultiAgent: # {{{
 				self.R[(self.curr_agent-1)%self.N] = reward
 				self.reached_goal[(self.curr_agent-1)%self.N] = reached_goal
 
-			data = {
-				'X':  self.X[self.curr_agent],
-				'A':  self.A[self.curr_agent],
-				'R':  self.R[self.curr_agent],
-				'X_': self.X_[self.curr_agent],
-				'reached_goal': self.reached_goal[self.curr_agent],
-			}
+			experience = Experience(
+				self.X[self.curr_agent],
+				self.A[self.curr_agent],
+				self.R[self.curr_agent],
+				self.reached_goal[self.curr_agent],
+				self.X_[self.curr_agent])
 
-			action, loss_val = self.agent_list[self.curr_agent].step(data, self.epsilon)
+			action, loss_val = self.agent_list[self.curr_agent].step(experience, self.epsilon)
 
 			self.X[self.curr_agent] = X.copy()
 			self.A[self.curr_agent] = action

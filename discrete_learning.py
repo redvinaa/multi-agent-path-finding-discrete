@@ -1,14 +1,13 @@
 # imports {{{
-from common import DiscreteEnv, QLearningAgent, MultiAgent, LinearDecay, Net, BasicPolicy, Params, NOOPAgent
+from common.linear_decay import LinearDecay
+from common.agent import make_agent, MultiAgent
+from common.env import DiscreteEnv
 from tensorboardX import SummaryWriter
 from multiprocessing import Process
-import numpy as np
 import torch.nn as nn
 import torch
-import argparse
-import pickle
-import os
-import shutil
+import numpy as np
+import argparse, pickle, shutil, yaml, os, time
 # }}}
 
 
@@ -25,48 +24,40 @@ def discrete_learning(args):
 		else:
 			print(f'{args["ns"]} > This run already exists')
 			quit()
+
+	with open('parameters.yaml', 'r') as f:
+		Params = yaml.load(f, Loader=yaml.FullLoader)
 	params = Params[args["name"]]
 
-	N_AGENTS = len(params['AGENTS'])
+	N_AGENTS = len(params['agents'])
 
 	# construct environment
-	env = DiscreteEnv(N_AGENTS, params['MAP_IMAGE'])
+	env = DiscreteEnv(N_AGENTS, params['map_image'])
 
 	# load or construct Q_networks
 	agent_list = []
-	for i, name in enumerate(params['AGENTS']):
-		if name == 'qlearning':
-			net = Net(env.get_os_len(), 5, params['HIDDEN_LAYER_SIZE'], params['N_HIDDEN_LAYERS'])
-			opt = torch.optim.Adam(net.parameters())
-			agent = QLearningAgent(net, opt, None, params['GAMMA'])
-		elif name == 'sarsa':
-			net = Net(env.get_os_len(), 5, params['HIDDEN_LAYER_SIZE'], params['N_HIDDEN_LAYERS'])
-			opt = torch.optim.Adam(net.parameters())
-			agent = SARSAAgent(net, opt, None, params['GAMMA'])
-		elif name == 'basic_policy':
-			agent = BasicPolicy(env)
-		elif name == 'noop':
-			agent = NOOPAgent()
-		else:
-			raise Exception('No such agent')
+	for i, agent_config in enumerate(params['agents']):
+		agent = make_agent(env, agent_config)
 		agent_list.append(agent)
 	agents = MultiAgent(agent_list)
 
-	if params['LOAD_MODEL']:
-		agents = pickle.load(open(f'models/{params["LOAD_MODEL"]}.p', 'rb'))
+	if params['load_model']:
+		agents = pickle.load(open(f'models/{params["load_model"]}.p', 'rb'))
 
 
 	# log to tensorboard
 	writer = SummaryWriter(f'runs/{args["name"]}')
 	writer.add_text('parameters', str(params).replace('{', '').replace('}', '').replace(', ', '\n'))
 
-	eps = LinearDecay(params['EPSILON_START'], params['EPSILON_FINAL'],
-		params['EPSILON_DECAY_LENGTH'])
+	eps = LinearDecay(params['epsilon_start'], params['epsilon_final'],
+		params['epsilon_decay_length'])
 	steps = 0
 	number_of_steps = np.zeros((N_AGENTS,))
 	# }}}
 
 	# training loop {{{
+	episode_start_time = time.time()
+
 	S = env.reset()
 	S = env.serialize(S)
 	A = agents.reset(S)
@@ -83,12 +74,11 @@ def discrete_learning(args):
 			S = env.serialize(S)
 			A, L = agents.step(S, R, done)
 
-			writer.add_scalar(f'action/agent_{env.curr_agent}', A, steps)
 			if type(L) != type(None):
 				writer.add_scalar(f'loss/agent_{env.curr_agent}', L, steps)
 
 			# saving models
-			if steps % (params['STEPS']//10) == 0 and steps != 0:
+			if steps % (params['steps']//10) == 0 and steps != 0:
 				print(f'{args["ns"]} > Saving models...')
 				pickle.dump(agents, open(f'models/{args["name"]}.p', 'wb'))
 
@@ -99,10 +89,13 @@ def discrete_learning(args):
 				writer.add_scalar(f'number_of_steps/agent_{env.curr_agent}',
 					number_of_steps[env.curr_agent], steps)
 				number_of_steps[env.curr_agent] = 0
+
+				writer.add_scalar('episode_time', time.time() - episode_start_time, steps)
+				episode_start_time = time.time()
 			else:
 				number_of_steps[env.curr_agent] += 1
 
-			if steps > params['STEPS']:
+			if steps > params['steps']:
 				print(f'{args["ns"]} > Saving models...')
 				pickle.dump(agents, open(f'models/{args["name"]}.p', 'wb'))
 				break
