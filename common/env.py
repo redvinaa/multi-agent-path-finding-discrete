@@ -31,16 +31,33 @@ class GlobalPlanner: # {{{
 		# don't need the first element, because its te current position of the agent
 # }}}
 
+def basic_policy(cost_map): # {{{
+	ACTION_DELTAS = np.array([[0, 1], [-1, 0], [0, -1], [1, 0], [0, 0]])
+
+	lens = np.empty((5,))
+	for a in range(5):
+		i1 = ACTION_DELTAS[a, 0] + 1
+		i2 = ACTION_DELTAS[a, 1] + 1
+		l = cost_map[i1, i2]
+		if l == -1:
+			lens[a] = np.nan
+		else:
+			lens[a] = l
+	return np.nanargmin(lens)
+# }}}
+
 class DiscreteEnv(gym.Env):
 	def __init__(self, # {{{
 		N,                   # number of agents
 		map_image,           # the image file to be used as a map
+		obstacles=0,         # number of dynamic obstacles
 		goal_closeness=None  # maximum starting distance from goal (not guaranteed)
 		):
 		super(DiscreteEnv, self).__init__()
 
 		self.N              = N
 		self.map_image      = map_image
+		self.obstacles      = obstacles
 		self.goal_closeness = goal_closeness
 
 		## loading map
@@ -59,18 +76,23 @@ class DiscreteEnv(gym.Env):
 		self.curr_agent           = 0
 		self.sf                   = self.RENDER_SIZE / self.map_size # scale factor, used at rendering
 		self.ACTION_DELTAS        = np.array([[0, 1], [-1, 0], [0, -1], [1, 0], [0, 0]]) # movement for each act
+		self.OBST_NEW_GOAL        = 10 # new goal after this many non-movement steps for obstacles
+		self.blinker              = False # blink circle on rendered image to see time pass
 
 		self.planner              = GlobalPlanner()
 		self.planner.set_map(self.map)
 
 		## generating colors for agents
 		self.agent_colors = 1 - np.random.random(size=3*N).reshape((-1, 3))/2
+		self.obst_colors  = ((.9,)*3,)*self.obstacles
 
 		## observation space
 		local_map     = spaces.Box(low=0, high=1, shape=(3, 3), dtype=int)
 		agent_coords  = spaces.Box(low=0, high=self.map_size-2, shape=(self.N, 2), dtype=int)
 		cost_mat      = spaces.Box(low=0, high=self.map_size*2, shape=(self.N, 3, 3), dtype=int)
 		self.observation_space = spaces.Tuple((local_map, agent_coords, cost_mat))
+		self.obst_stop   = np.zeros((self.obstacles,), dtype=int) # when an obstacle has not moved
+		# in a long time, generate new goal for it
 
 		## action space
 		self.action_space = spaces.Discrete(5)
@@ -81,10 +103,15 @@ class DiscreteEnv(gym.Env):
 		# create a copy of the map, and mark where a new state or goal can be spawned
 		# vector of indices where there are no walls, states or goals
 		free_vec   = np.argwhere(self.map.astype(bool).flatten()).flatten()
-		assert(free_vec.size >= self.N*2) # check if there is enough space for the agents and goals
+		if not free_vec.size >= (self.N+self.obstacles)*2:
+			# check if there is enough space for the agents and goals
+			raise ValueError(f'Map {params["map_name"]} is too small for {self.N} agents'+
+				f'and {self.obstacles} obstacles')
 
-		self.states = np.full((self.N, 2), np.nan)
-		self.goals  = np.full((self.N, 2), np.nan)
+		self.states      = np.full((self.N, 2), np.nan)
+		self.goals       = np.full((self.N, 2), np.nan)
+		self.obst_states = np.full((self.obstacles, 2), np.nan)
+		self.obst_goals  = np.full((self.obstacles, 2), np.nan)
 		for i in range(self.N):
 			# states
 			s = np.random.choice(free_vec)
@@ -95,6 +122,23 @@ class DiscreteEnv(gym.Env):
 			free_vec = free_vec[free_vec != s]
 
 			self.generate_goal(i)
+			g = self.goals[i][0]*self.map_size + self.goals[i][1]
+			free_vec = free_vec[free_vec != g]
+
+		# states and goals for obstacles
+		for i in range(self.obstacles):
+			# states
+			s = np.random.choice(free_vec)
+			row = int(s // self.map_size)
+			col =  s - row * self.map_size
+
+			self.obst_states[i] = np.array([row, col])
+			free_vec = free_vec[free_vec != s]
+
+			# goals
+			self.generate_obst_goal(i)
+			g = self.obst_goals[i][0]*self.map_size + self.obst_goals[i][1]
+			free_vec = free_vec[free_vec != g]
 	# }}}
 
 	def generate_goal(self, agent_idx): # {{{
@@ -113,6 +157,19 @@ class DiscreteEnv(gym.Env):
 				if g_flat in free_vec:
 					free_vec = free_vec[free_vec != g_flat]
 
+		for n in range(self.obstacles): # mark obst_states and obst_goals as occupied
+			s = self.obst_states[n]
+			if not np.isnan(s).any():
+				s_flat = int(s[0]*self.map_size + s[1])
+				if s_flat in free_vec:
+					free_vec = free_vec[free_vec != s_flat]
+
+			g = self.obst_goals[n]
+			if not np.isnan(g).any():
+				g_flat = int(g[0]*self.map_size + g[1])
+				if g_flat in free_vec:
+					free_vec = free_vec[free_vec != g_flat]
+
 		np.random.shuffle(free_vec) # inplace
 		s = self.states[agent_idx].astype(int)
 		for i, g_new in enumerate(free_vec):
@@ -126,6 +183,41 @@ class DiscreteEnv(gym.Env):
 				break
 
 		self.goals[agent_idx] = np.array([row, col])
+	# }}}
+
+	def generate_obst_goal(self, obst_idx): # {{{
+		# calculate free positions
+		free_vec   = np.argwhere(self.map.astype(bool).flatten()).flatten()
+		for n in range(self.N): # mark states and goals as occupied
+			s = self.states[n]
+			if not np.isnan(s).any():
+				s_flat = int(s[0]*self.map_size + s[1])
+				if s_flat in free_vec:
+					free_vec = free_vec[free_vec != s_flat]
+
+			g = self.goals[n]
+			if not np.isnan(g).any():
+				g_flat = int(g[0]*self.map_size + g[1])
+				if g_flat in free_vec:
+					free_vec = free_vec[free_vec != g_flat]
+
+		for n in range(self.obstacles): # mark obst_states and obst_goals as occupied
+			s = self.obst_states[n]
+			if not np.isnan(s).any():
+				s_flat = int(s[0]*self.map_size + s[1])
+				if s_flat in free_vec:
+					free_vec = free_vec[free_vec != s_flat]
+
+			g = self.obst_goals[n]
+			if not np.isnan(g).any():
+				g_flat = int(g[0]*self.map_size + g[1])
+				if g_flat in free_vec:
+					free_vec = free_vec[free_vec != g_flat]
+
+		g = np.random.choice(free_vec)
+		row = int(g // self.map_size)
+		col = g - row * self.map_size
+		self.obst_goals[obst_idx] = np.array([row, col])
 	# }}}
 
 	def calculate_costmap(self): # {{{
@@ -158,6 +250,15 @@ class DiscreteEnv(gym.Env):
 		# mark agents on local map
 		for n in range(self.N):
 			s_rel = self.states[n] - self.states[self.curr_agent] + np.array([1, 1])
+			s_rel = s_rel.astype(int)
+			if (s_rel < 0).any() or (s_rel > 2).any():
+				# cannot be seen on local map
+				continue
+			local_map[tuple(s_rel)] = 0
+
+		# mark obstacles on local map
+		for n in range(self.obstacles):
+			s_rel = self.obst_states[n] - self.states[self.curr_agent] + np.array([1, 1])
 			s_rel = s_rel.astype(int)
 			if (s_rel < 0).any() or (s_rel > 2).any():
 				# cannot be seen on local map
@@ -199,6 +300,9 @@ class DiscreteEnv(gym.Env):
 			elif len(np.flatnonzero((self.states == next_state).all(1))):
 				# hit other agent
 				hit = True
+			elif len(np.flatnonzero((self.obst_states == next_state).all(1))):
+				# hit obstacle agent
+				hit = True
 
 		if not hit and action != 4:
 			# there is actual movement
@@ -216,6 +320,53 @@ class DiscreteEnv(gym.Env):
 				R -= 0.5
 
 		self.curr_agent = (self.curr_agent+1) % self.N
+
+		if self.curr_agent == 0:
+			# step with obstacles at the end of the round
+			for i in range(self.obstacles):
+				# calculate costmap from obstacle's perspective
+				s = self.obst_states[i].astype(int)
+				g = self.obst_goals[i].astype(int)
+				cost_map = self.cost_map_padded[s[0]:s[0]+3, s[1]:s[1]+3, g[0]+1, g[1]+1]
+				action = basic_policy(cost_map)
+
+				next_state = self.obst_states[i].astype(int) + self.ACTION_DELTAS[action]
+
+				hit = False
+				if action != 4:
+					# check for collision
+					if -1 in next_state or self.map_size in next_state:
+						# out of map
+						hit = True
+					elif self.map[tuple(next_state)] == 0:
+						# hit wall
+						hit = True
+					elif len(np.flatnonzero((self.states == next_state).all(1))):
+						# hit other agent
+						hit = True
+					elif len(np.flatnonzero((self.obst_states == next_state).all(1))):
+						# hit obstacle agent
+						hit = True
+
+				if not hit and action != 4:
+					# there is actual movement
+					self.obst_stop[i] = 0
+
+					self.obst_states[i] = next_state
+
+					# check if goal is reached
+					if (self.obst_states[i] == self.obst_goals[i]).all():
+						# generate new goal
+						self.generate_obst_goal(i)
+
+				else:
+					# there is no movement
+					self.obst_stop[i] += 1
+
+					if self.obst_stop[i] > self.OBST_NEW_GOAL:
+						# obstacle is stuck, generate new goal
+						self.generate_obst_goal(i)
+
 		S = self.get_observation()
 
 		return S, float(R), done, None
@@ -253,6 +404,10 @@ class DiscreteEnv(gym.Env):
 			interpolation=cv2.INTER_AREA) # resize
 		sf = self.sf # scale factor
 
+		font = cv2.FONT_HERSHEY_TRIPLEX
+		scale = int(sf/40)
+		thickness = int(sf/30)
+
 		# draw goals
 		for i, g in enumerate(self.goals):
 			center = (int(g[0]*sf+sf/2), int(g[1]*sf+sf/2))
@@ -261,26 +416,48 @@ class DiscreteEnv(gym.Env):
 			p2 = (int(g[0]*sf + sf), int(g[1]*sf + sf))
 			c = tuple(self.agent_colors[i])
 			self.pic = cv2.rectangle(self.pic, p1, p2, color=c, thickness=-1)
+		# draw obstacle goals
+		for i, g in enumerate(self.obst_goals):
+			center = (int(g[0]*sf+sf/2), int(g[1]*sf+sf/2))
+			radius = int(sf/2)
+			p1 = (int(g[0]*sf), int(g[1]*sf))
+			p2 = (int(g[0]*sf + sf), int(g[1]*sf + sf))
+			c = tuple(self.obst_colors[i])
+			self.pic = cv2.rectangle(self.pic, p1, p2, color=c, thickness=-1)
 
 		# draw states
 		for i, s in enumerate(self.states):
 			center = (int(s[0]*sf+sf/2), int(s[1]*sf+sf/2))
 			radius = int(sf/2 * .8)
 			self.pic = cv2.circle(self.pic, center, radius, color=tuple(self.agent_colors[i]), thickness=-1)
-			self.pic = cv2.circle(self.pic, center, radius, color=0, thickness=2)
+			self.pic = cv2.circle(self.pic, center, radius, color=0, thickness=1)
+		# draw obstacle states
+		for i, s in enumerate(self.obst_states):
+			center = (int(s[0]*sf+sf/2), int(s[1]*sf+sf/2))
+			radius = int(sf/2 * .8)
+			self.pic = cv2.circle(self.pic, center, radius, color=tuple(self.obst_colors[i]), thickness=-1)
+			self.pic = cv2.circle(self.pic, center, radius, color=0, thickness=1)
 
 		self.pic = cv2.transpose(self.pic)
 		# different coordinate systems used by numpy and cv2
 
+		# draw agent numbers
 		for i, s in enumerate(self.states):
-			# draw number
-			font = cv2.FONT_HERSHEY_TRIPLEX
-			scale = int(sf/40)
-			thickness = int(sf/30)
 			txt_size = cv2.getTextSize(str(i), font, scale, thickness)[0]
-
 			org = (int((s[1]+.5)*sf - txt_size[1]//2), int((s[0]+.5)*sf + txt_size[0]//2))
 			self.pic = cv2.putText(self.pic, str(i), org, font, scale, 0, thickness)
+		# draw obstacle numbers
+		for i, s in enumerate(self.obst_states):
+			txt_size = cv2.getTextSize(str(i), font, scale, thickness)[0]
+			org = (int((s[1]+.5)*sf - txt_size[1]//2), int((s[0]+.5)*sf + txt_size[0]//2))
+			self.pic = cv2.putText(self.pic, str(i), org, font, scale, 0, thickness)
+
+		# blink circle
+		if self.blinker:
+			radius = self.RENDER_SIZE // 100
+			center = (radius,)*2
+			self.pic = cv2.circle(self.pic, center, radius, color=0, thickness=-1)
+		self.blinker = not self.blinker
 
 		return self.pic
 	# }}}
@@ -296,7 +473,7 @@ if __name__ == '__main__': # {{{
 
 	N = 2
 
-	env = DiscreteEnv(N, 'maps/test_4x4.jpg')
+	env = DiscreteEnv(N, 'maps/test_9x9.jpg', 1)
 	S = env.reset()
 	R = None
 

@@ -15,10 +15,10 @@ def test(args):
 
 	if args['video']:
 		fourcc = cv2.VideoWriter_fourcc(*'MP4V')
-		video = cv2.VideoWriter(args['video'][0], fourcc, 1/(500//2/1000), (700, 700))
+		video = cv2.VideoWriter(args['video'][0], fourcc, 2*(N+params['obstacles']), (700, 700))
 
 	# construct environment
-	env = DiscreteEnv(N, params['map_image'])
+	env = DiscreteEnv(N, params['map_image'], params['obstacles'], params['goal_closeness_final'])
 
 	reached_goal    = np.full((N, args['steps'],), False)
 
@@ -36,6 +36,7 @@ def test(args):
 
 			if args['render']:
 				env.render(500//N)
+				#  env.render()
 
 			if args['video']:
 				frame = env.get_rendered_pic()

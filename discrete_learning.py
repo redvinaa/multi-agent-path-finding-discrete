@@ -32,10 +32,11 @@ def discrete_learning(args):
 	N_AGENTS = sum(params['agents'].values())
 
 	# construct environment
-	env = DiscreteEnv(N_AGENTS, params['map_image'], 1)
+	env = DiscreteEnv(N_AGENTS, params['map_image'], params['obstacles'], 1)
 	print(f'{args["name"]} > Environment generated:\n'+
 		f'\t- map: {params["map_image"]}\n'+
 		f'\t- agents: {N_AGENTS}\n'+
+		f'\t- obstacles: {params["obstacles"]}\n'+
 		f'\t- observation_space_size: {env.get_os_len()}\n'+
 		f'\t- max_distance: {np.max(env.cost_map)}')
 
