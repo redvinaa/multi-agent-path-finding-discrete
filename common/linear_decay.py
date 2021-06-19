@@ -10,9 +10,11 @@ class LinearDecay:
 		self.max_steps = max_steps
 		self.curr_steps = 0
 
-		self.val = start
 		if max_steps > 0:
 			self.delta = (start - end) / max_steps
+			self.val = start
+		else:
+			self.val = end
 
 	def step(self):
 		if self.max_steps > 0:

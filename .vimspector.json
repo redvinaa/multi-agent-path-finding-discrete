@@ -9,7 +9,7 @@
 				"program": "${workspaceRoot}/discrete_learning.py",
 				"cwd": "${workspaceRoot}",
 				"stopOnEntry": true,
-				"args": ["--delete_previous", "1agent-2"],
+				"args": ["--delete_previous", "3agent"],
 				"console": "externalTerminal"
 			},
 			"breakpoints": {

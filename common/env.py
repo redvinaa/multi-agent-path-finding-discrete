@@ -33,13 +33,15 @@ class GlobalPlanner: # {{{
 
 class DiscreteEnv(gym.Env):
 	def __init__(self, # {{{
-		N,                # number of agents
-		map_image,        # the image file to be used as a map
+		N,                   # number of agents
+		map_image,           # the image file to be used as a map
+		goal_closeness=None  # maximum starting distance from goal (not guaranteed)
 		):
 		super(DiscreteEnv, self).__init__()
 
-		self.N            = N
-		self.map_image    = map_image
+		self.N              = N
+		self.map_image      = map_image
+		self.goal_closeness = goal_closeness
 
 		## loading map
 		self.map = cv2.imread(map_image, cv2.IMREAD_GRAYSCALE) / 255.
@@ -78,28 +80,52 @@ class DiscreteEnv(gym.Env):
 		## generating starting states and goals
 		# create a copy of the map, and mark where a new state or goal can be spawned
 		# vector of indices where there are no walls, states or goals
-		self.free_vec   = np.argwhere(self.map.astype(bool).flatten()).flatten()
-		assert(self.free_vec.size >= self.N*2) # check if there is enough space for the agents and goals
+		free_vec   = np.argwhere(self.map.astype(bool).flatten()).flatten()
+		assert(free_vec.size >= self.N*2) # check if there is enough space for the agents and goals
 
-		# generate states and goals
-		self.states = np.empty((self.N, 2), dtype=int)
-		self.goals  = np.empty((self.N, 2), dtype=int)
+		self.states = np.full((self.N, 2), np.nan)
+		self.goals  = np.full((self.N, 2), np.nan)
 		for i in range(self.N):
 			# states
-			s = np.random.choice(self.free_vec)
+			s = np.random.choice(free_vec)
 			row = int(s // self.map_size)
 			col =  s - row * self.map_size
 
 			self.states[i] = np.array([row, col])
-			self.free_vec = self.free_vec[self.free_vec != s]
+			free_vec = free_vec[free_vec != s]
 
-			# goals
-			g = np.random.choice(self.free_vec)
-			row = int(g // self.map_size)
-			col =  g - row * self.map_size
+			self.generate_goal(i)
+	# }}}
 
-			self.goals[i] = np.array([row, col])
-			self.free_vec = self.free_vec[self.free_vec != g]
+	def generate_goal(self, agent_idx): # {{{
+		# calculate free positions
+		free_vec   = np.argwhere(self.map.astype(bool).flatten()).flatten()
+		for n in range(self.N): # mark states and goals as occupied
+			s = self.states[n]
+			if not np.isnan(s).any():
+				s_flat = int(s[0]*self.map_size + s[1])
+				if s_flat in free_vec:
+					free_vec = free_vec[free_vec != s_flat]
+
+			g = self.goals[n]
+			if not np.isnan(g).any():
+				g_flat = int(g[0]*self.map_size + g[1])
+				if g_flat in free_vec:
+					free_vec = free_vec[free_vec != g_flat]
+
+		np.random.shuffle(free_vec) # inplace
+		s = self.states[agent_idx].astype(int)
+		for i, g_new in enumerate(free_vec):
+			row = int(g_new // self.map_size)
+			col = g_new - row * self.map_size
+			if self.goal_closeness == None:
+				break
+			if self.cost_map[s[0], s[1], row, col] <= self.goal_closeness:
+				# if close enough, break
+				# if no point is close enough, simply go with the last one
+				break
+
+		self.goals[agent_idx] = np.array([row, col])
 	# }}}
 
 	def calculate_costmap(self): # {{{
@@ -123,11 +149,20 @@ class DiscreteEnv(gym.Env):
 	# }}}
 
 	def get_observation(self): # {{{
-		p_v1 = self.states[self.curr_agent, 0] # horizontal, from
-		p_v2 = p_v1 + 3                        # horizontal, to
-		p_h1 = self.states[self.curr_agent, 1] # vertical, from
-		p_h2 = p_h1 + 3                        # vertical, to
+		p_v1 = self.states[self.curr_agent, 0].astype(int)  # horizontal, from
+		p_v2 = p_v1 + 3                                     # horizontal, to
+		p_h1 = self.states[self.curr_agent, 1].astype(int)  # vertical, from
+		p_h2 = p_h1 + 3                                     # vertical, to
 		local_map = self.map_padded[p_v1:p_v2, p_h1:p_h2].copy()
+
+		# mark agents on local map
+		for n in range(self.N):
+			s_rel = self.states[n] - self.states[self.curr_agent] + np.array([1, 1])
+			s_rel = s_rel.astype(int)
+			if (s_rel < 0).any() or (s_rel > 2).any():
+				# cannot be seen on local map
+				continue
+			local_map[tuple(s_rel)] = 0
 
 		agent_coords = np.roll(self.states.copy(), -self.curr_agent, axis=0)
 		for n in range(1, self.N):
@@ -135,8 +170,8 @@ class DiscreteEnv(gym.Env):
 
 		# get costmaps
 		for n in range(self.N):
-			s = self.states[n]
-			g = self.goals[n]
+			s = self.states[n].astype(int)
+			g = self.goals[n].astype(int)
 			self.cost_map_local[n] = self.cost_map_padded[s[0]:s[0]+3, s[1]:s[1]+3, g[0]+1, g[1]+1]
 		self.cost_map_local = np.roll(self.cost_map_local.copy(), -self.curr_agent, axis=0)
 
@@ -149,7 +184,7 @@ class DiscreteEnv(gym.Env):
 
 	def step(self, action): # {{{
 		R = 0
-		next_state = self.states[self.curr_agent] + self.ACTION_DELTAS[action]
+		next_state = self.states[self.curr_agent].astype(int) + self.ACTION_DELTAS[action]
 
 		done = False
 		hit = False
@@ -172,26 +207,13 @@ class DiscreteEnv(gym.Env):
 			# check if goal is reached
 			if (self.states[self.curr_agent] == self.goals[self.curr_agent]).all():
 				done = True
-				# generate new goal
-				self.free_vec   = np.argwhere(self.map.astype(bool).flatten()).flatten()
-				for n in range(self.N): # mark states and goals as occupied
-					s = self.states[n]
-					s_flat = int(s[0]*self.map_size + s[1])
-					if s_flat in self.free_vec:
-						self.free_vec = self.free_vec[self.free_vec != s_flat]
-
-					g = self.goals[n]
-					g_flat = int(g[0]*self.map_size + g[1])
-					if g_flat in self.free_vec:
-						self.free_vec = self.free_vec[self.free_vec != g_flat]
-
-				g_new = np.random.choice(self.free_vec)
-				row = int(g_new // self.map_size)
-				col = g_new - row * self.map_size
-				self.goals[self.curr_agent] = np.array([row, col])
+				self.generate_goal(self.curr_agent)
 		if not done:
 			# no goal reaching reward
 			R = -1
+
+			if hit:
+				R -= 0.5
 
 		self.curr_agent = (self.curr_agent+1) % self.N
 		S = self.get_observation()

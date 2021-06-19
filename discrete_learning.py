@@ -1,3 +1,6 @@
+#!.venv/bin/python
+# PYTHON_ARGCOMPLETE_OK
+
 # imports {{{
 from common.linear_decay import LinearDecay
 from common.agent import make_agent, MultiAgent
@@ -7,14 +10,11 @@ from multiprocessing import Process
 import torch.nn as nn
 import torch
 import numpy as np
-import argparse, pickle, shutil, yaml, os, time
+import argparse, argcomplete, pickle, shutil, yaml, os, time
 # }}}
 
 
 def discrete_learning(args):
-	if not 'ns' in args:
-		args['ns'] = ''
-
 	# initialization {{{ 
 	dirname = os.path.dirname(os.path.abspath(__file__))
 	dirname = os.path.join(dirname, 'runs/'+args["name"])
@@ -22,7 +22,7 @@ def discrete_learning(args):
 		if args["delete_previous"]:
 			shutil.rmtree(dirname, ignore_errors=True)
 		else:
-			print(f'{args["ns"]} > This run already exists')
+			print(f'{args["name"]} > This run already exists')
 			quit()
 
 	with open('parameters.yaml', 'r') as f:
@@ -32,7 +32,12 @@ def discrete_learning(args):
 	N_AGENTS = sum(params['agents'].values())
 
 	# construct environment
-	env = DiscreteEnv(N_AGENTS, params['map_image'])
+	env = DiscreteEnv(N_AGENTS, params['map_image'], 1)
+	print(f'{args["name"]} > Environment generated:\n'+
+		f'\t- map: {params["map_image"]}\n'+
+		f'\t- agents: {N_AGENTS}\n'+
+		f'\t- observation_space_size: {env.get_os_len()}\n'+
+		f'\t- max_distance: {np.max(env.cost_map)}')
 
 	# load or construct Q_networks
 	agent_list = []
@@ -52,11 +57,16 @@ def discrete_learning(args):
 
 	eps = LinearDecay(params['epsilon_start'], params['epsilon_final'],
 		params['epsilon_decay_length'])
+	goal_cl = LinearDecay(params['goal_closeness_start'], params['goal_closeness_final'],
+		params['goal_closeness_decay_length'])
 	steps = 0
 	number_of_steps = np.zeros((N_AGENTS,))
 	# }}}
 
 	# training loop {{{
+	agents.epsilon = eps()
+	env.goal_closeness = goal_cl()
+
 	episode_start_time = time.time()
 
 	S = env.reset()
@@ -66,10 +76,12 @@ def discrete_learning(args):
 		while True:
 			if not args['quiet']:
 				if steps % 1000 == 0:
-					print(f'{args["ns"]} > Steps: {steps:.1e}')
+					print(f'{args["name"]} > Steps: {steps:.1e}')
 
 			agents.epsilon = eps()
-			writer.add_scalar('epsilon', eps(), steps)
+			env.goal_closeness = goal_cl()
+			writer.add_scalar('global/epsilon', eps(), steps)
+			writer.add_scalar('global/goal_closeness', goal_cl(), steps)
 
 			S, R, done, _ = env.step(A)
 			S = env.serialize(S)
@@ -80,10 +92,11 @@ def discrete_learning(args):
 
 			# saving models
 			if steps % (params['steps']//10) == 0 and steps != 0:
-				print(f'{args["ns"]} > Saving models...')
+				print(f'{args["name"]} > Saving models...')
 				pickle.dump(agents, open(f'models/{args["name"]}.p', 'wb'))
 
 			eps.step()
+			goal_cl.step()
 			steps += 1
 
 			if done:
@@ -91,13 +104,13 @@ def discrete_learning(args):
 					number_of_steps[env.curr_agent], steps)
 				number_of_steps[env.curr_agent] = 0
 
-				writer.add_scalar('episode_time', time.time() - episode_start_time, steps)
+				writer.add_scalar('global/episode_time', time.time() - episode_start_time, steps)
 				episode_start_time = time.time()
 			else:
 				number_of_steps[env.curr_agent] += 1
 
 			if steps > params['steps']:
-				print(f'{args["ns"]} > Saving models...')
+				print(f'{args["name"]} > Saving models...')
 				pickle.dump(agents, open(f'models/{args["name"]}.p', 'wb'))
 				break
 
@@ -105,18 +118,25 @@ def discrete_learning(args):
 				env.render()
 
 	except KeyboardInterrupt:
-		print(f'{args["ns"]} > Saving models...')
+		print(f'{args["name"]} > Saving models...')
 		pickle.dump(agents, open(f'models/{args["name"]}.p', 'wb'))
 	# }}}
 
 
 if __name__ == '__main__':
+	# get available configurations
+	with open('parameters.yaml', 'r') as f:
+		Params = yaml.load(f, Loader=yaml.FullLoader)
+	choices = np.array(list(Params.keys()))
+	choices = choices[choices != 'agent_definitions']
+
 	# parse arguments {{{
 	parser = argparse.ArgumentParser()
-	parser.add_argument('names', default='default', nargs='+', help='Names of the parameter groups')
+	parser.add_argument('names', default='default', nargs='+', choices=choices, help='Names of the parameter groups')
 	parser.add_argument('-r', '--render', action='store_true', help='Render environment')
 	parser.add_argument('-q', '--quiet', action='store_true', help='Do not print progress')
 	parser.add_argument('-d', '--delete_previous', action='store_true', help='If a run named "name" already exists, delete the old run')
+	argcomplete.autocomplete(parser)
 	args = parser.parse_args()
 	# }}}
 
@@ -130,7 +150,7 @@ if __name__ == '__main__':
 		arg_dict = vars(args)
 		processes = []
 		for name in args.names:
-			arg_dict.update({'name': name, 'ns': name})
+			arg_dict.update({'name': name})
 			process = Process(target=discrete_learning, args=(arg_dict,))
 			processes.append(process)
 			process.start()
