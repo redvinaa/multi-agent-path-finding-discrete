@@ -12,8 +12,8 @@ class DQNAgent:
 	# and the dqn algorithm (inputs: X, A, R, X_)
 	# https://www.nature.com/articles/nature14236
 
-	def __init__(self, net, optim, gamma=1., num_actions=5,
-		sync_frequency=1, sample_size=1, buffer_size=1, device='cpu'):
+	def __init__(self, net, optim,/,
+		gamma=1., num_actions=5, sync_frequency=1, sample_size=1, buffer_size=1, device='cpu', policy=None):
 		self.net            = net
 		self.net_frozen     = deepcopy(net)
 		self.optim          = optim
@@ -24,6 +24,7 @@ class DQNAgent:
 		self.buffer_size    = buffer_size
 		self.device         = device
 		self.last_sync      = 0
+		self.policy         = policy
 
 		self.buffer = ExperienceBuffer(self.buffer_size)
 
@@ -33,11 +34,16 @@ class DQNAgent:
 		if np.random.random() < epsilon:
 			return np.random.randint(0, self.num_actions)
 
-		state_a = np.array([X], copy=False)
-		state_v = torch.as_tensor(state_a)
-		q_vals_v = self.net(state_v)
-		_, act_v = torch.max(q_vals_v, dim=1)
-		return int(act_v.flatten().item())
+		if type(self.policy) == type(None):
+			# greedy action from Q_network
+			state_a = np.array([X], copy=False)
+			state_v = torch.as_tensor(state_a)
+			q_vals_v = self.net(state_v)
+			_, act_v = torch.max(q_vals_v, dim=1)
+			return int(act_v.flatten().item())
+
+		# following policy
+		return self.policy(X)
 
 	def step(self, experience, epsilon=0.): # learning
 

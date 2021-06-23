@@ -4,15 +4,22 @@
 # imports {{{
 from common.linear_decay import LinearDecay
 from common.agent import make_agent, MultiAgent
+from common.policy import make_policy
 from common.env import DiscreteEnv
 from tensorboardX import SummaryWriter
 from multiprocessing import Process
 import torch.nn as nn
 import torch
 import numpy as np
-import argparse, argcomplete, pickle, shutil, yaml, os, time
+import argparse, argcomplete, shutil, yaml, os, time
 # }}}
 
+
+def save_models(run_name, agent_list, unique_agent_indices):
+	# loop through agent types
+	# save only one of each, agents are similar because of the evolution anyway
+	for agent_type, idx in unique_agent_indices.items():
+		torch.save(agent_list[idx].net.state_dict(), f'models/{run_name}/{agent_type}.pt')
 
 def discrete_learning(args):
 	# initialization {{{ 
@@ -29,10 +36,22 @@ def discrete_learning(args):
 		Params = yaml.load(f, Loader=yaml.FullLoader)
 	params = Params[args["name"]]
 
-	N_AGENTS = sum(params['agents'].values())
+	# count agents
+	N_AGENTS = 0
+	for agent_obj in params['agents']:
+		if type(agent_obj) == str:
+			N_AGENTS += 1
+		else:
+			for i in range(agent_obj['n_agents']):
+				N_AGENTS += 1
 
 	# construct environment
-	env = DiscreteEnv(N_AGENTS, params['map_image'], params['obstacles'], 1)
+	goal_closeness = None
+	if 'goal_closeness' in params:
+		# set goal closeness if needed
+		goal_closeness = params['goal_closeness']
+	env = DiscreteEnv(N_AGENTS, params['map_image'], params['obstacles'], goal_closeness)
+	S = env.reset()
 	print(f'{args["name"]} > Environment generated:\n'+
 		f'\t- map: {params["map_image"]}\n'+
 		f'\t- agents: {N_AGENTS}\n'+
@@ -40,37 +59,59 @@ def discrete_learning(args):
 		f'\t- observation_space_size: {env.get_os_len()}\n'+
 		f'\t- max_distance: {np.max(env.cost_map)}')
 
-	# load or construct Q_networks
+	# check if a folder exists for the models to be saved in, else create it
+	if not os.path.isdir(f'models/{args["name"]}'):
+		os.mkdir(f'models/{args["name"]}')
+
+	# construct agents
+	unique_agent_indices = {} # store the index of 1 agent from each type (for saving models)
+	idx = 0
 	agent_list = []
-	for agent_type, num in params['agents'].items():
-		for i in range(num):
+	for agent_obj in params['agents']:
+		if type(agent_obj) == str: # only string is provided, no settings
+			agent_type = agent_obj
 			agent = make_agent(env, Params['agent_definitions'][agent_type])
 			agent_list.append(agent)
-	agents = MultiAgent(agent_list)
 
-	if params['load_model']:
-		agents = pickle.load(open(f'models/{params["load_model"]}.p', 'rb'))
+			unique_agent_indices.update({agent_type: idx})
+			idx += 1
 
+		else: # settings are provided
+
+			for i in range(agent_obj['n_agents']):
+
+				policy = None
+				if 'policy' in agent_obj:
+					policy = make_policy(env, agent_obj['policy'])
+
+				agent = make_agent(env, Params['agent_definitions'][agent_obj['type']], policy)
+
+				if 'load' in agent_obj:
+					agent.net.load_state_dict(torch.load(f'models/{agent_obj["load"]}.pt'))
+				agent_list.append(agent)
+
+				unique_agent_indices.update({agent_obj['type']: idx})
+				idx += 1
+
+	agents = MultiAgent(agent_list, evolution_frequency=params['evolution_frequency'])
 
 	# log to tensorboard
 	writer = SummaryWriter(f'runs/{args["name"]}')
 	writer.add_text('parameters', str(params).replace('{', '').replace('}', '').replace(', ', '\n'))
 
 	eps = LinearDecay(params['epsilon_start'], params['epsilon_final'],
-		params['epsilon_decay_length'])
-	goal_cl = LinearDecay(params['goal_closeness_start'], params['goal_closeness_final'],
-		params['goal_closeness_decay_length'])
+		params['epsilon_decay_length']*N_AGENTS)
+
 	steps = 0
 	number_of_steps = np.zeros((N_AGENTS,))
 	# }}}
 
 	# training loop {{{
 	agents.epsilon = eps()
-	env.goal_closeness = goal_cl()
 
 	episode_start_time = time.time()
 
-	S = env.reset()
+	#  S = env.reset() # this was called before, to get the stats
 	S = env.serialize(S)
 	A = agents.reset(S)
 	try:
@@ -79,48 +120,48 @@ def discrete_learning(args):
 				if steps % 1000 == 0:
 					print(f'{args["name"]} > Steps: {steps:.1e}')
 
-			agents.epsilon = eps()
-			env.goal_closeness = goal_cl()
-			writer.add_scalar('global/epsilon', eps(), steps)
-			writer.add_scalar('global/goal_closeness', goal_cl(), steps)
+			for n in range(N_AGENTS):
 
-			S, R, done, _ = env.step(A)
-			S = env.serialize(S)
-			A, L = agents.step(S, R, done)
+				agents.epsilon = eps()
+				writer.add_scalar('global/epsilon', eps(), steps)
 
-			if type(L) != type(None):
-				writer.add_scalar(f'loss/agent_{env.curr_agent}', L, steps)
+				S, R, done, _ = env.step(A)
+				S = env.serialize(S)
+				A, L = agents.step(S, R, done)
+
+				if type(L) != type(None):
+					writer.add_scalar(f'loss/agent_{env.curr_agent}', L, steps)
+
+				if done:
+					writer.add_scalar(f'number_of_steps/agent_{env.curr_agent}',
+						number_of_steps[env.curr_agent], steps)
+					number_of_steps[env.curr_agent] = 0
+
+					writer.add_scalar('global/episode_time', time.time() - episode_start_time, steps)
+					episode_start_time = time.time()
+				else:
+					number_of_steps[env.curr_agent] += 1
+
+				if args["render"]:
+					env.render()
 
 			# saving models
 			if steps % (params['steps']//10) == 0 and steps != 0:
 				print(f'{args["name"]} > Saving models...')
-				pickle.dump(agents, open(f'models/{args["name"]}.p', 'wb'))
-
-			eps.step()
-			goal_cl.step()
-			steps += 1
-
-			if done:
-				writer.add_scalar(f'number_of_steps/agent_{env.curr_agent}',
-					number_of_steps[env.curr_agent], steps)
-				number_of_steps[env.curr_agent] = 0
-
-				writer.add_scalar('global/episode_time', time.time() - episode_start_time, steps)
-				episode_start_time = time.time()
-			else:
-				number_of_steps[env.curr_agent] += 1
+				save_models(args['name'], agents.agent_list, unique_agent_indices)
 
 			if steps > params['steps']:
-				print(f'{args["name"]} > Saving models...')
-				pickle.dump(agents, open(f'models/{args["name"]}.p', 'wb'))
 				break
 
-			if args["render"]:
-				env.render()
+			eps.step()
+			steps += 1
 
 	except KeyboardInterrupt:
+		pass
+
+	finally:
 		print(f'{args["name"]} > Saving models...')
-		pickle.dump(agents, open(f'models/{args["name"]}.p', 'wb'))
+		save_models(args['name'], agents.agent_list, unique_agent_indices)
 	# }}}
 
 
@@ -148,6 +189,7 @@ if __name__ == '__main__':
 		discrete_learning(arg_dict)
 
 	else:
+		# start learning in separate processes
 		arg_dict = vars(args)
 		processes = []
 		for name in args.names:

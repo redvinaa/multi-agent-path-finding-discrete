@@ -70,6 +70,7 @@ class DiscreteEnv(gym.Env):
 		assert(len(self.map.shape) == 2 and self.map.shape[0] == self.map.shape[1])
 		self.map_size = self.map.shape[0]
 		self.map_padded = pad_image(self.map)
+		self.need_reset = True
 
 		## constants
 		self.RENDER_SIZE          = 700 # size of rendered image (square)
@@ -96,49 +97,6 @@ class DiscreteEnv(gym.Env):
 
 		## action space
 		self.action_space = spaces.Discrete(5)
-
-		self.calculate_costmap()
-
-		## generating starting states and goals
-		# create a copy of the map, and mark where a new state or goal can be spawned
-		# vector of indices where there are no walls, states or goals
-		free_vec   = np.argwhere(self.map.astype(bool).flatten()).flatten()
-		if not free_vec.size >= (self.N+self.obstacles)*2:
-			# check if there is enough space for the agents and goals
-			raise ValueError(f'Map {params["map_name"]} is too small for {self.N} agents'+
-				f'and {self.obstacles} obstacles')
-
-		self.states      = np.full((self.N, 2), np.nan)
-		self.goals       = np.full((self.N, 2), np.nan)
-		self.obst_states = np.full((self.obstacles, 2), np.nan)
-		self.obst_goals  = np.full((self.obstacles, 2), np.nan)
-		for i in range(self.N):
-			# states
-			s = np.random.choice(free_vec)
-			row = int(s // self.map_size)
-			col =  s - row * self.map_size
-
-			self.states[i] = np.array([row, col])
-			free_vec = free_vec[free_vec != s]
-
-			self.generate_goal(i)
-			g = self.goals[i][0]*self.map_size + self.goals[i][1]
-			free_vec = free_vec[free_vec != g]
-
-		# states and goals for obstacles
-		for i in range(self.obstacles):
-			# states
-			s = np.random.choice(free_vec)
-			row = int(s // self.map_size)
-			col =  s - row * self.map_size
-
-			self.obst_states[i] = np.array([row, col])
-			free_vec = free_vec[free_vec != s]
-
-			# goals
-			self.generate_obst_goal(i)
-			g = self.obst_goals[i][0]*self.map_size + self.obst_goals[i][1]
-			free_vec = free_vec[free_vec != g]
 	# }}}
 
 	def generate_goal(self, agent_idx): # {{{
@@ -280,10 +238,56 @@ class DiscreteEnv(gym.Env):
 	# }}}
 
 	def reset(self): # {{{
+		self.calculate_costmap()
+
+		## generating starting states and goals
+		# create a copy of the map, and mark where a new state or goal can be spawned
+		# vector of indices where there are no walls, states or goals
+		free_vec   = np.argwhere(self.map.astype(bool).flatten()).flatten()
+		if not free_vec.size >= (self.N+self.obstacles)*2:
+			# check if there is enough space for the agents and goals
+			raise ValueError(f'Map {params["map_name"]} is too small for {self.N} agents'+
+				f'and {self.obstacles} obstacles')
+
+		self.states      = np.full((self.N, 2), np.nan)
+		self.goals       = np.full((self.N, 2), np.nan)
+		self.obst_states = np.full((self.obstacles, 2), np.nan)
+		self.obst_goals  = np.full((self.obstacles, 2), np.nan)
+		for i in range(self.N):
+			# states
+			s = np.random.choice(free_vec)
+			row = int(s // self.map_size)
+			col =  s - row * self.map_size
+
+			self.states[i] = np.array([row, col])
+			free_vec = free_vec[free_vec != s]
+
+			self.generate_goal(i)
+			g = self.goals[i][0]*self.map_size + self.goals[i][1]
+			free_vec = free_vec[free_vec != g]
+
+		# states and goals for obstacles
+		for i in range(self.obstacles):
+			# states
+			s = np.random.choice(free_vec)
+			row = int(s // self.map_size)
+			col =  s - row * self.map_size
+
+			self.obst_states[i] = np.array([row, col])
+			free_vec = free_vec[free_vec != s]
+
+			# goals
+			self.generate_obst_goal(i)
+			g = self.obst_goals[i][0]*self.map_size + self.obst_goals[i][1]
+			free_vec = free_vec[free_vec != g]
+
+		self.need_reset = False
 		return self.get_observation()
 	# }}}
 
 	def step(self, action): # {{{
+		assert(not self.need_reset)
+
 		R = 0
 		next_state = self.states[self.curr_agent].astype(int) + self.ACTION_DELTAS[action]
 
@@ -381,8 +385,8 @@ class DiscreteEnv(gym.Env):
 	def deserialize(self, S, dtype=np.float32): # {{{
 		local_map = S[:9].reshape((3,3))
 		S = S[9:]
-		agent_coords = S[:self.N*2].reshape((self.N, 2))
-		S = S[self.N*2:]
+		agent_coords = S[:(self.N-1)*2].reshape((self.N-1, 2))
+		S = S[(self.N-1)*2:]
 		cost_map_local = S.reshape((-1, 3, 3))
 		return local_map, agent_coords, cost_map_local
 	# }}}

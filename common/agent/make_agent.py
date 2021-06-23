@@ -4,7 +4,7 @@ from common.agent.multi_agent import MultiAgent
 from common.agent.net import Net
 import torch
 
-def make_agent(env, conf):
+def make_agent(env, conf, policy=None):
 	net = Net(
 		env.get_os_len(),
 		env.action_space.n,
@@ -22,11 +22,12 @@ def make_agent(env, conf):
 	if conf['type'] == 'DQN':
 		return DQNAgent(net,
 			opt,
-			conf['gamma'],
-			env.action_space.n,
-			conf['sync_frequency'],
-			conf['sample_size'],
-			conf['buffer_size'],
-			conf['device'])
+			gamma=conf['gamma'],
+			num_actions=env.action_space.n,
+			sync_frequency=conf['sync_frequency'],
+			sample_size=conf['sample_size'],
+			buffer_size=conf['buffer_size'],
+			device=conf['device'],
+			policy=policy)
 
 	raise ValueError(f'No such agent: {conf["type"]}')

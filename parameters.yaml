@@ -1,13 +1,9 @@
 agent_definitions:
-  dqn-60:
-    type: DQN
+  qlearning:
+    type: qlearning
     hidden_layer_size: 60
     n_hidden_layers: 1
     gamma: 0.99
-    device: cpu
-    sync_frequency: 100
-    buffer_size: 1000
-    sample_size: 100
   dqn-30:
     type: DQN
     hidden_layer_size: 30
@@ -17,15 +13,15 @@ agent_definitions:
     sync_frequency: 100
     buffer_size: 1000
     sample_size: 100
-  dqn-30-2:
+  dqn-60:
     type: DQN
-    hidden_layer_size: 30
+    hidden_layer_size: 60
     n_hidden_layers: 1
     gamma: 0.99
     device: cpu
     sync_frequency: 100
-    buffer_size: 10000
-    sample_size: 1000
+    buffer_size: 1000
+    sample_size: 100
 1agent_obst:
   map_image: maps/test_4x4.jpg
   agents:
@@ -34,9 +30,6 @@ agent_definitions:
   epsilon_decay_length: 10000 # 1e4
   epsilon_start: 1.0
   epsilon_final: 0.01
-  goal_closeness_decay_length: 10000 # 1e4
-  goal_closeness_start: 1
-  goal_closeness_final: 7
   evolution_frequency: 0
   steps: 30000 # 3e4
   load_model: ''
@@ -49,69 +42,18 @@ agent_definitions:
   epsilon_decay_length: 10000 # 1e4
   epsilon_start: 1.0
   epsilon_final: 0.0
-  goal_closeness_decay_length: 10000 # 1e4
-  goal_closeness_start: 1
-  goal_closeness_final: 24
   evolution_frequency: 0
   steps: 20000 # 2e4
-  load_model: ''
-  comment: ''
-2agent:
-  map_image: maps/test_4x4.jpg
-  agents:
-    dqn-30-2: 2
-  obstacles: 0
-  epsilon_decay_length: 40000 # 4e4
-  epsilon_start: 1.0
-  epsilon_final: 0.0
-  goal_closeness_decay_length: 20000 # 2e4
-  goal_closeness_start: 1
-  goal_closeness_final: 7
-  evolution_frequency: 0
-  steps: 100000 # 1e5
-  load_model: ''
-  comment: ''
-2agent_9_2:
-  map_image: maps/test_9x9.jpg
-  agents:
-    dqn-30-2: 2
-  obstacles: 0
-  epsilon_decay_length: 100000 # 1e5
-  epsilon_start: 0.5
-  epsilon_final: 0.01
-  goal_closeness_decay_length: 100000 # 1e5
-  goal_closeness_start: 1
-  goal_closeness_final: 24
-  evolution_frequency: 0
-  steps: 200000 # 2e5
-  load_model: '2agent'
-  comment: ''
-3agent:
-  map_image: maps/empty_4x4.jpg
-  agents:
-    dqn-30-2: 3
-  obstacles: 0
-  epsilon_decay_length: 40000 # 4e4
-  epsilon_start: 1.0
-  epsilon_final: 0.0
-  goal_closeness_decay_length: 20000 # 2e4
-  goal_closeness_start: 1
-  goal_closeness_final: 6
-  evolution_frequency: 0
-  steps: 100000 # 1e5
   load_model: ''
   comment: ''
 3agent_obst:
   map_image: maps/empty_4x4.jpg
   agents:
-    dqn-30-2: 3
+    dqn-30: 3
   obstacles: 2
   epsilon_decay_length: 40000 # 4e4
   epsilon_start: 0.5
   epsilon_final: 0.0
-  goal_closeness_decay_length: 20000 # 2e4
-  goal_closeness_start: 1
-  goal_closeness_final: 6
   evolution_frequency: 0
   steps: 100000 # 1e5
   load_model: '3agent'
@@ -119,14 +61,11 @@ agent_definitions:
 3agent_6:
   map_image: maps/test_6x6.jpg
   agents:
-    dqn-30-2: 3
+    dqn-30: 3
   obstacles: 0
   epsilon_decay_length: 40000 # 4e4
   epsilon_start: 0.5
   epsilon_final: 0.0
-  goal_closeness_decay_length: 20000 # 2e4
-  goal_closeness_start: 1
-  goal_closeness_final: 6
   evolution_frequency: 0
   steps: 100000 # 1e5
   load_model: '3agent_obst'
@@ -134,30 +73,40 @@ agent_definitions:
 3agent_9:
   map_image: maps/test_9x9.jpg
   agents:
-    dqn-30-2: 3
+    dqn-30: 3
   obstacles: 0
   epsilon_decay_length: 10000 # 1e4
   epsilon_start: 0.5
   epsilon_final: 0.0
-  goal_closeness_decay_length: 5000 # 5e3
-  goal_closeness_start: 1
-  goal_closeness_final: 4
   evolution_frequency: 1000
   steps: 10000 # 1e4
   load_model: '3agent_6'
   comment: ''
-test:
-  map_image: maps/empty_4x4.jpg
+5agent-stage1:
+  map_image: maps/test_9x9.jpg
   agents:
-    dqn-30-2: 3
+    - type: dqn-60
+      n_agents: 5
+      policy: basic_policy
   obstacles: 0
-  epsilon_decay_length: 40000 # 4e4
-  epsilon_start: 1.0
+  epsilon_decay_length: 10000 # 1e4
+  epsilon_start: 0.3
+  epsilon_final: 0.1 # no 0 epsilon with deterministic policy
+  goal_closeness: 5
+  evolution_frequency: 1000 # evolution only in case some agents diverge
+  steps: 10000 # 1e4
+  comment: ''
+5agent-stage2:
+  map_image: maps/test_9x9.jpg
+  agents:
+    - type: dqn-60
+      n_agents: 5
+      load: 5agent-stage1/dqn-60
+  obstacles: 0
+  epsilon_decay_length: 10000 # 1e4
+  epsilon_start: 0.5
   epsilon_final: 0.0
-  goal_closeness_decay_length: 20000 # 2e4
-  goal_closeness_start: 1
-  goal_closeness_final: 6
+  goal_closeness: 5
   evolution_frequency: 1000 # 1e3
-  steps: 100000 # 1e5
-  load_model: ''
+  steps: 10000 # 1e4
   comment: ''
