@@ -88,7 +88,7 @@ class DiscreteEnv(gym.Env):
 
 		## observation space
 		local_map     = spaces.Box(low=0, high=1, shape=(3, 3), dtype=int)
-		agent_coords  = spaces.Box(low=0, high=self.map_size-2, shape=(self.N, 2), dtype=int)
+		agent_coords  = spaces.Box(low=0, high=self.map_size-1, shape=(self.N-1, 2), dtype=int)
 		cost_mat      = spaces.Box(low=0, high=self.map_size*2, shape=(self.N, 3, 3), dtype=int)
 		self.observation_space = spaces.Tuple((local_map, agent_coords, cost_mat))
 		self.obst_stop   = np.zeros((self.obstacles,), dtype=int) # when an obstacle has not moved
@@ -266,8 +266,8 @@ class DiscreteEnv(gym.Env):
 			local_map[tuple(s_rel)] = 0
 
 		agent_coords = np.roll(self.states.copy(), -self.curr_agent, axis=0)
-		for n in range(1, self.N):
-			agent_coords[n] -= agent_coords[0]
+		agent_coords -= agent_coords[0]
+		agent_coords = agent_coords[1:]
 
 		# get costmaps
 		for n in range(self.N):
@@ -390,7 +390,7 @@ class DiscreteEnv(gym.Env):
 	def get_os_len(self): # {{{
 		return (
 			9 + # local_map
-			self.N*2 + # agent_coords
+			(self.N-1)*2 + # agent_coords
 			self.N*9 # cost_maps
 			)
 	# }}}
@@ -443,14 +443,16 @@ class DiscreteEnv(gym.Env):
 
 		# draw agent numbers
 		for i, s in enumerate(self.states):
-			txt_size = cv2.getTextSize(str(i), font, scale, thickness)[0]
+			txt = str(i)
+			txt_size = cv2.getTextSize(txt, font, scale, thickness)[0]
 			org = (int((s[1]+.5)*sf - txt_size[1]//2), int((s[0]+.5)*sf + txt_size[0]//2))
-			self.pic = cv2.putText(self.pic, str(i), org, font, scale, 0, thickness)
+			self.pic = cv2.putText(self.pic, txt, org, font, scale, 0, thickness)
 		# draw obstacle numbers
 		for i, s in enumerate(self.obst_states):
-			txt_size = cv2.getTextSize(str(i), font, scale, thickness)[0]
+			txt = chr(65 + i)
+			txt_size = cv2.getTextSize(txt, font, scale, thickness)[0]
 			org = (int((s[1]+.5)*sf - txt_size[1]//2), int((s[0]+.5)*sf + txt_size[0]//2))
-			self.pic = cv2.putText(self.pic, str(i), org, font, scale, 0, thickness)
+			self.pic = cv2.putText(self.pic, txt, org, font, scale, 0, thickness)
 
 		# blink circle
 		if self.blinker:
