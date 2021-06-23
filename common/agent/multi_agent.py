@@ -7,12 +7,15 @@ class MultiAgent: # {{{
 	# this class can be used with an infinite episode multi-agent environment:
 	# it wraps the agents, collects (X, A, R, X_) sets, then trains them
 
-	def __init__(self, agent_list, epsilon=0):
-		self.agent_list = agent_list
-		self.N          = len(agent_list)
-		self.epsilon    = epsilon
+	def __init__(self, agent_list, epsilon=0, evolution_frequency=0):
+		self.agent_list          = agent_list
+		self.N                   = len(agent_list)
+		self.epsilon             = epsilon
+		self.evolution_frequency = evolution_frequency
 
 		self.curr_agent = 0
+		self.epoch_rewards = np.zeros((self.N,)) # rewards collected in one evolution step
+		self.epoch_steps   = 0 # steps since last evolution
 		self.reached_goal = []
 		self.X  = []
 		self.A  = []
@@ -24,6 +27,8 @@ class MultiAgent: # {{{
 
 	def reset(self, X):
 		self.curr_agent = 0
+		self.epoch_steps = 0
+		self.epoch_rewards.fill(0)
 		self.X.clear()
 		self.A.clear()
 		self.R.clear()
@@ -43,6 +48,16 @@ class MultiAgent: # {{{
 			idx = self.curr_agent
 
 		return self.agent_list[idx](X, self.epsilon)
+
+	def evolution(self):
+		best_agent = np.argmax(self.epoch_rewards)
+		self.epoch_rewards.fill(0)
+		best_agent_state_dict = self.agent_list[best_agent].net.state_dict()
+		for n in range(self.N):
+			if n == best_agent:
+				continue
+
+			self.agent_list[n].net.load_state_dict(best_agent_state_dict)
 
 	def step(self, X, reward, reached_goal=False):
 		# reward refers to the previous agent, state X refers to the current one
@@ -84,6 +99,13 @@ class MultiAgent: # {{{
 			self.A[self.curr_agent] = action
 
 		self.curr_agent = (self.curr_agent + 1) % self.N
+
+		if self.evolution_frequency > 0:
+			self.epoch_steps += 1
+			self.epoch_rewards[self.curr_agent] += reward
+			if self.curr_agent == 0 and self.epoch_steps >= self.evolution_frequency*self.N:
+				self.evolution()
+
 		return action, loss_val
 # }}}
 

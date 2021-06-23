@@ -26,8 +26,23 @@ agent_definitions:
     sync_frequency: 100
     buffer_size: 10000
     sample_size: 1000
-test_obstacles:
+1agent_obst:
   map_image: maps/test_4x4.jpg
+  agents:
+    dqn-30: 1
+  obstacles: 1
+  epsilon_decay_length: 10000 # 1e4
+  epsilon_start: 1.0
+  epsilon_final: 0.01
+  goal_closeness_decay_length: 10000 # 1e4
+  goal_closeness_start: 1
+  goal_closeness_final: 7
+  evolution_frequency: 0
+  steps: 30000 # 3e4
+  load_model: ''
+  comment: ''
+1agent_obst_9:
+  map_image: maps/test_9x9.jpg
   agents:
     dqn-30: 1
   obstacles: 1
@@ -36,39 +51,12 @@ test_obstacles:
   epsilon_final: 0.0
   goal_closeness_decay_length: 10000 # 1e4
   goal_closeness_start: 1
-  goal_closeness_final: 7
-  steps: 30000 # 2e4
-  load_model: ''
-  comment: ''
-1agent:
-  map_image: maps/test_4x4.jpg
-  agents:
-    dqn-30: 1
-  obstacles: 0
-  epsilon_decay_length: 10000 # 1e4
-  epsilon_start: 1.0
-  epsilon_final: 0.0
-  goal_closeness_decay_length: 5000
-  goal_closeness_start: 1
-  goal_closeness_final: 8
+  goal_closeness_final: 24
+  evolution_frequency: 0
   steps: 20000 # 2e4
   load_model: ''
   comment: ''
 2agent:
-  map_image: maps/test_4x4.jpg
-  agents:
-    dqn-30: 2
-  obstacles: 0
-  epsilon_decay_length: 40000 # 4e4
-  epsilon_start: 1.0
-  epsilon_final: 0.0
-  goal_closeness_decay_length: 20000 # 2e4
-  goal_closeness_start: 1
-  goal_closeness_final: 7
-  steps: 100000 # 1e5
-  load_model: ''
-  comment: ''
-2agent-2:
   map_image: maps/test_4x4.jpg
   agents:
     dqn-30-2: 2
@@ -79,6 +67,97 @@ test_obstacles:
   goal_closeness_decay_length: 20000 # 2e4
   goal_closeness_start: 1
   goal_closeness_final: 7
+  evolution_frequency: 0
+  steps: 100000 # 1e5
+  load_model: ''
+  comment: ''
+2agent_9_2:
+  map_image: maps/test_9x9.jpg
+  agents:
+    dqn-30-2: 2
+  obstacles: 0
+  epsilon_decay_length: 100000 # 1e5
+  epsilon_start: 0.5
+  epsilon_final: 0.01
+  goal_closeness_decay_length: 100000 # 1e5
+  goal_closeness_start: 1
+  goal_closeness_final: 24
+  evolution_frequency: 0
+  steps: 200000 # 2e5
+  load_model: '2agent'
+  comment: ''
+3agent:
+  map_image: maps/empty_4x4.jpg
+  agents:
+    dqn-30-2: 3
+  obstacles: 0
+  epsilon_decay_length: 40000 # 4e4
+  epsilon_start: 1.0
+  epsilon_final: 0.0
+  goal_closeness_decay_length: 20000 # 2e4
+  goal_closeness_start: 1
+  goal_closeness_final: 6
+  evolution_frequency: 0
+  steps: 100000 # 1e5
+  load_model: ''
+  comment: ''
+3agent_obst:
+  map_image: maps/empty_4x4.jpg
+  agents:
+    dqn-30-2: 3
+  obstacles: 2
+  epsilon_decay_length: 40000 # 4e4
+  epsilon_start: 0.5
+  epsilon_final: 0.0
+  goal_closeness_decay_length: 20000 # 2e4
+  goal_closeness_start: 1
+  goal_closeness_final: 6
+  evolution_frequency: 0
+  steps: 100000 # 1e5
+  load_model: '3agent'
+  comment: ''
+3agent_6:
+  map_image: maps/test_6x6.jpg
+  agents:
+    dqn-30-2: 3
+  obstacles: 0
+  epsilon_decay_length: 40000 # 4e4
+  epsilon_start: 0.5
+  epsilon_final: 0.0
+  goal_closeness_decay_length: 20000 # 2e4
+  goal_closeness_start: 1
+  goal_closeness_final: 6
+  evolution_frequency: 0
+  steps: 100000 # 1e5
+  load_model: '3agent_obst'
+  comment: ''
+3agent_9:
+  map_image: maps/test_9x9.jpg
+  agents:
+    dqn-30-2: 3
+  obstacles: 0
+  epsilon_decay_length: 10000 # 1e4
+  epsilon_start: 0.5
+  epsilon_final: 0.0
+  goal_closeness_decay_length: 5000 # 5e3
+  goal_closeness_start: 1
+  goal_closeness_final: 4
+  evolution_frequency: 1000
+  steps: 10000 # 1e4
+  load_model: '3agent_6'
+  comment: ''
+test:
+  map_image: maps/empty_4x4.jpg
+  agents:
+    dqn-30-2: 3
+  obstacles: 0
+  epsilon_decay_length: 40000 # 4e4
+  epsilon_start: 1.0
+  epsilon_final: 0.0
+  goal_closeness_decay_length: 20000 # 2e4
+  goal_closeness_start: 1
+  goal_closeness_final: 6
+  evolution_frequency: 1000 # 1e3
   steps: 100000 # 1e5
   load_model: ''
   comment: ''
